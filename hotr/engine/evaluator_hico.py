@@ -31,11 +31,13 @@ def hico_evaluate(model, postprocessors, data_loader, device, thr):
         outputs = model(samples)
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, orig_target_sizes, threshold=thr, dataset='hico-det')
+        import pdb; pdb.set_trace()
         hoi_recognition_time.append(results[0]['hoi_recognition_time'] * 1000)
 
         preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
         # For avoiding a runtime error, the copy is used
         gts.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(targets)))))
+        break
 
     print(f"[stats] HOI Recognition Time (avg) : {sum(hoi_recognition_time)/len(hoi_recognition_time):.4f} ms")
 

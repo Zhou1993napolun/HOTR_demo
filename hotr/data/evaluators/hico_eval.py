@@ -53,6 +53,8 @@ class HICOEvaluator():
                 'predictions': bboxes,
                 'hoi_prediction': hois
             })
+            import pdb; pdb.set_trace()
+        
 
         self.gts = []
         for img_gts in gts:
