@@ -23,7 +23,7 @@ Before the start, make sure all the preparations are done:
     * `data/hico_20160224_det/list_action.txt`
     * `data/hico_20160224_det/corre_hico.npy`
 
-_Note that these names can be changed but the input parameters should be changed at the same time._
+_Note that these names can be changed but the input parameters should be changed at the same time. The checkpoint file can be downloaded from [kakaobrain](https://arena.kakaocdn.net/brainrepo/hotr/hico_q16.pth 'COCO detector for HICO-DET dataset')._
 
 Create virtual environment
 ```sh
