@@ -18,12 +18,24 @@ import hotr.util.misc as utils
 from hotr.engine.arg_parser import get_args_parser
 from hotr.models import build_model
 
-from data.videoloader import LoadImages
+from data.videoloader import LoadImages, LoadWebcam
 import time
 
-def main(args):
+from io import BytesIO
+import threading
+from flask import Flask, render_template, Response
+
+outputFrame = None
+lock = threading.Lock()
+loginfo = "Video Stream is Running..."
+
+app = Flask(__name__)
+
+def predict(args):
     timestart = time.time()
     device = torch.device(args.device)
+
+    global outputFrame, lock
 
     # Data Setup
     meta = datasets.builtin_meta._get_coco_instances_meta()
@@ -41,7 +53,7 @@ def main(args):
     args.action_names = _valid_verb_names
     if args.share_enc: args.hoi_enc_layers = args.enc_layers
     if args.pretrained_dec: args.hoi_dec_layers = args.dec_layers
-
+    
     args.valid_obj_ids = _valid_obj_ids
     correct_mat = np.load(args.correct_path)
     print(args)
@@ -63,7 +75,13 @@ def main(args):
     if args.eval:
         # test only mode
         # img_ori = cv2.imread(args.img_dir)
-        videoloader = LoadImages(args.img_dir)
+        if args.camera:
+            if args.camera == '-1':
+                videoloader = LoadWebcam(pipe = 'http://pi:raspberry@192.168.12.150:8090/stream.mjpg')
+            else: 
+                videoloader = LoadWebcam(pipe = args.camera)
+        else:
+            videoloader = LoadImages(args.img_dir)
         vid_writer, temp = None, False
         for i, (path,img,img_ori,vid_cap) in enumerate(videoloader):
             timeframe = time.time()
@@ -154,27 +172,84 @@ def main(args):
                             cv2.rectangle(img_save, (obj_box[0], obj_box[1]), (obj_box[2], obj_box[3]), color=(0, 0, 255))
                             cv2.putText(img_save, f'{verb_name_proper} {obj_name} : {score:.3f}', (sub_box[0], sub_box[1]-10), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 1)
                 # continue
-            outpath = args.outpath + video_name + '_' + str(Path(path).name)
-            print(outpath,'score =', highscore, end = '; ')
-            if not temp: 
-                temp = True
-                if isinstance(vid_writer, cv2.VideoWriter):
-                    vid_writer.release()  # release previous video writer
+            
+            if args.camera:  # Show live webcam
+                    
+                '''
+                add for web
+                '''
+                im0 = img_save
+                flag, encodedImage = cv2.imencode(".jpg", im0)
 
-                fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                vid_writer = cv2.VideoWriter(outpath, fourcc, fps, (width, height))
-            vid_writer.write(img_save)
-            timeframe = time.time() - timeframe
-            print('Complete, frame time: %.2f' %timeframe)
+                my_stringIObytes = BytesIO(encodedImage)
+                my_stringIObytes.seek(0)
+
+                with lock:
+                    print("Yes done this")
+                    outputFrame = my_stringIObytes.read()
+                    cv2.imwrite('./output/camtest/test.jpg', im0)
+                    print(im0.shape)
+
+                '''
+                add for web
+                '''
+
+                cv2.imshow('output', im0)
+            else :
+                outpath = args.outpath + video_name + '_' + str(Path(path).name)
+                print(outpath,'score =', highscore, end = '; ')
+                if not temp: 
+                    temp = True
+                    if isinstance(vid_writer, cv2.VideoWriter):
+                        vid_writer.release()  # release previous video writer
+
+                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                    width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    vid_writer = cv2.VideoWriter(outpath, fourcc, fps, (width, height))
+                vid_writer.write(img_save)
+                timeframe = time.time() - timeframe
+                print('Complete, frame time: %.2f' %timeframe)
     timeend = time.time()
     timeprocess = timeend - timestart
     print('Main function runtime: %.2f' %timeprocess)
             
 
-if __name__ == '__main__':
+def generate():
+    """Video streaming generator function."""
+    # grab global references to the output frame and lock variables
+    global outputFrame, lock
+
+    # loop over frames from the output stream
+    while True:
+        # wait until the lock is acquired
+        with lock:
+            # check if the output frame is available, otherwise skip
+            # the iteration of the loop
+            if outputFrame is None:
+                print("OutputFrame is None!")
+                continue
+
+            # # encode the frame in JPEG format
+            # (flag, encodedImage) = cv2.imencode(".jpg", outputFrame)
+            #
+            # ensure the frame was successfully encoded
+            # if not flag:
+            #     continue
+            encodedImage = outputFrame
+        # yield the output frame in the byte format
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming route. Put this in the src attribute of an img tag."""
+    return Response(generate(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/')
+def main():
     parser = argparse.ArgumentParser(
         'End-to-End Human Object Interaction training and evaluation script',
         parents=[get_args_parser()]
@@ -182,10 +257,18 @@ if __name__ == '__main__':
     parser.add_argument('--action_list_file', default='data/hico_20160224_det/list_action.txt', type=str)
     parser.add_argument('--correct_path', default='data/hico_20160224_det/corre_hico.npy', type=str)
     parser.add_argument('--img_dir', default='test.jpg', type=str, help='image to inference')
+    parser.add_argument('--camera', default=None, type=str, help='Index or ip of camera.')
     parser.add_argument('--outpath',default = './output/temp/',type = str, help = 'path to store output video')
     parser.add_argument('--conf_thres',default = 0.33, type = float, help = 'confidence threshold of verbs')
     args = parser.parse_args()
     # import glob
     # for d in sorted(glob.glob('/nfs/project/wangyuanbin_i/hotr/hico_20160224_det/images/test2015/HICO_test2015_000000*.jpg')):
     #     args.img_dir = d
-    main(args)
+    predict(args)
+
+if __name__ == '__main__':
+    
+        t = threading.Thread(target=main)
+        t.daemon = True
+        t.start()
+        app.run(host='0.0.0.0', threaded=True, debug=True, port="8080", use_reloader=False)

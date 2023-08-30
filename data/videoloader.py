@@ -101,3 +101,53 @@ class LoadImages:  # for inference
 
     def __len__(self):
         return self.nF  # number of files
+
+
+class LoadWebcam:  # for inference
+    def __init__(self, img_size=416, half=False, pipe = 'http://pi:raspberry@192.168.12.150:8090/stream.mjpg'):
+        self.img_size = img_size
+        self.half = half  # half precision fp16 images
+
+        pipe = pipe  # local camera
+        # pipe = 'rtsp://192.168.1.64/1'  # IP camera
+        # pipe = 'rtsp://username:password@192.168.1.64/1'  # IP camera with login
+
+        # https://answers.opencv.org/question/215996/changing-gstreamer-pipeline-to-opencv-in-pythonsolved/
+        # pipe = '"rtspsrc location="rtsp://username:password@192.168.1.64/1" latency=10 ! appsink'  # GStreamer
+
+        # https://answers.opencv.org/question/200787/video-acceleration-gstremer-pipeline-in-videocapture/
+        # https://stackoverflow.com/questions/54095699/install-gstreamer-support-for-opencv-python-package  # install help
+        # pipe = "rtspsrc location=rtsp://root:root@192.168.0.91:554/axis-media/media.amp?videocodec=h264&resolution=3840x2160 protocols=GST_RTSP_LOWER_TRANS_TCP ! rtph264depay ! queue ! vaapih264dec ! videoconvert ! appsink"  # GStreamer
+
+        self.cap = cv2.VideoCapture(pipe)  # video capture object
+
+    def __iter__(self):
+        self.count = -1
+        return self
+
+    def __next__(self):
+        self.count += 1
+        if cv2.waitKey(1) == 27:  # esc to quit
+            cv2.destroyAllWindows()
+            raise StopIteration
+
+        # Read image
+        ret_val, img0 = self.cap.read()
+        assert ret_val, 'Webcam Error'
+        img_path = 'webcam_%g.jpg' % self.count
+        img0 = cv2.flip(img0, 1)  # flip left-right
+        print('webcam %g: ' % self.count, end='')
+
+        # Padded resize
+        # img, *_ = letterbox(img0, new_shape=self.img_size)
+        img=img0
+
+        # Normalize RGB
+        img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
+        img = np.ascontiguousarray(img, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
+        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+
+        return img_path, img, img0, None
+
+    def __len__(self):
+        return 0

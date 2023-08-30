@@ -48,6 +48,11 @@ Run with video input
 ```sh
 python predict_video.py --HOIDet --share_enc --pretrained_dec --num_hoi_queries 16 --object_threshold 0 --temperature 0.2 --no_aux_loss --eval --resume checkpoints/hico_det/hico_q16.pth --dataset_file hico-det --action_list_file data/hico_20160224_det/list_action.txt --correct_path data/hico_20160224_det/corre_hico.npy --img_dir ./input --outpath output/temp/
 ```
+Run with camera input
+```sh
+python predict_video.py --HOIDet --share_enc --pretrained_dec --num_hoi_queries 16 --object_threshold 0 --temperature 0.2 --no_aux_loss --eval --resume checkpoints/hico_det/hico_q16.pth --dataset_file hico-det --action_list_file data/hico_20160224_det/list_action.txt --correct_path data/hico_20160224_det/corre_hico.npy --camera -1 --outpath output/temp/
+```
+
 
 Additional parameters:  
 - conf_thres 
